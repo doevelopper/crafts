@@ -1,0 +1,204 @@
+kind: compose
+metadata:
+  name: HashiCorp Vault
+  description: |
+    A **secrets management** platform for securely storing and accessing tokens, passwords,
+    certificates, and encryption keys. Provides dynamic secrets, data encryption, and
+    identity-based access.
+
+    ## Prerequisites
+
+    - :warning: Vault starts in **sealed** state. You must initialize and unseal it on first run.
+    - :info: Dev mode (single-node, in-memory) is available for testing but NOT for production.
+    - :info: Default storage backend is file-based. For HA, use Raft (integrated storage).
+
+    ## Resources
+
+    - **Project**: https://www.vaultproject.io/
+    - **Documentation**: https://developer.hashicorp.com/vault/docs
+    - **Docker Hub**: https://hub.docker.com/r/hashicorp/vault
+  version: 1.19.2
+  author: Christian Lempa
+  date: '2026-02-28'
+  tags:
+  - traefik
+  - security
+  - swarm
+  draft: true
+schema: '1.2'
+spec:
+  general:
+    vars:
+      service_name:
+        default: vault
+      container_name:
+        default: vault
+      container_hostname:
+        default: vault
+      restart_policy:
+        type: enum
+        options:
+        - unless-stopped
+        - always
+        - on-failure
+        - 'no'
+        default: unless-stopped
+        required: true
+  vault:
+    title: Vault Settings
+    vars:
+      vault_addr:
+        type: str
+        description: Vault API address
+        default: http://0.0.0.0:8200
+      vault_api_addr:
+        type: str
+        description: Vault cluster API address (for HA)
+        default: http://0.0.0.0:8200
+      vault_ui:
+        type: bool
+        description: Enable Vault web UI
+        default: true
+      vault_log_level:
+        type: enum
+        description: Vault log level
+        options:
+        - trace
+        - debug
+        - info
+        - warn
+        - error
+        default: info
+  ports:
+    vars:
+      ports_http:
+        description: Vault API/UI port
+        type: int
+        default: 8200
+        needs:
+        - traefik_enabled=false
+        - network_mode=bridge
+  traefik:
+    toggle: traefik_enabled
+    title: Traefik
+    description: Configure Traefik reverse proxy integration
+    vars:
+      traefik_enabled:
+        type: bool
+        default: false
+        description: Enable Traefik integration
+        needs: network_mode=bridge
+      traefik_entrypoint:
+        type: str
+        description: The Traefik entrypoint
+        default: web
+        required: true
+      traefik_host:
+        default: vault
+      traefik_network:
+        type: str
+        description: Traefik network name
+        default: traefik
+        required: true
+        needs: traefik_enabled
+      traefik_network_external:
+        type: bool
+        description: Use external Traefik network
+        default: true
+        needs: traefik_enabled
+      traefik_domain:
+        type: str
+        default: home.arpa
+        required: true
+  traefik_tls:
+    toggle: traefik_tls_enabled
+    title: Traefik TLS
+    description: Configure Traefik TLS/SSL certificates
+    needs: traefik
+    vars:
+      traefik_tls_enabled:
+        type: bool
+        default: false
+        description: Enable Traefik TLS
+      traefik_tls_entrypoint:
+        type: str
+        description: The Traefik TLS entrypoint
+        default: websecure
+        required: true
+      traefik_tls_certresolver:
+        type: str
+        default: cloudflare
+        required: true
+  volume:
+    title: Volume Storage
+    vars:
+      volume_mode:
+        type: enum
+        description: Volume storage mode
+        options:
+        - local
+        - mount
+        - nfs
+        default: local
+      volume_mount_path:
+        type: str
+        description: Host path for bind mount
+        default: /srv/vault
+        needs: volume_mode=mount
+      volume_nfs_server:
+        type: str
+        description: NFS server address
+        default: ''
+        needs: volume_mode=nfs
+      volume_nfs_path:
+        type: str
+        description: NFS export path
+        default: /mnt/vault
+        needs: volume_mode=nfs
+      volume_nfs_options:
+        type: str
+        description: NFS mount options
+        default: rw,nolock,soft
+        needs: volume_mode=nfs
+  network:
+    vars:
+      network_mode:
+        type: enum
+        options:
+        - bridge
+        - host
+        - macvlan
+        default: bridge
+      network_name:
+        default: vault_network
+      network_external:
+        type: bool
+        default: false
+        description: Whether the network is external
+  swarm:
+    toggle: swarm_enabled
+    title: Docker Swarm
+    vars:
+      swarm_enabled:
+        type: bool
+        default: false
+        description: Enable Docker Swarm mode
+        needs: network_mode=bridge
+      swarm_placement_mode:
+        type: enum
+        options:
+        - replicated
+        - global
+        default: replicated
+        required: true
+      swarm_replicas:
+        type: int
+        default: 1
+        description: Number of replicas
+        needs: swarm_placement_mode=replicated
+        required: true
+      swarm_placement_host:
+        type: str
+        default: ''
+        description: Target hostname for placement constraint
+        needs: swarm_placement_mode=replicated

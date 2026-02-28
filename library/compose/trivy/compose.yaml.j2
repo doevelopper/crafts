@@ -1,0 +1,30 @@
+services:
+  {{ service_name }}:
+    image: aquasec/trivy:0.61.0
+    container_name: {{ container_name }}
+    command: >
+      trivy {{ scan_type }}
+      --format {{ output_format }}
+      --severity {{ severity }}
+      --output /results/trivy-results.{{ output_format }}
+      /src
+    volumes:
+      - {{ scan_source_path }}:/src:ro
+      - {{ scan_results_path }}:/results
+    {% if network_mode == 'bridge' -%}
+    networks:
+      - {{ network_name }}
+    {% else -%}
+    network_mode: {{ network_mode }}
+    {% endif -%}
+    restart: {{ restart_policy }}
+
+{% if network_mode == 'bridge' -%}
+networks:
+  {{ network_name }}:
+  {% if network_external -%}
+    external: true
+  {% else -%}
+    driver: bridge
+  {% endif -%}
+{% endif -%}

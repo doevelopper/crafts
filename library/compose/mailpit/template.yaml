@@ -1,0 +1,155 @@
+kind: compose
+metadata:
+  name: Mailpit
+  description: |
+    An **email testing tool** for developers that acts as an SMTP server and provides
+    a web interface to view captured emails. Lightweight alternative to Mailhog with
+    modern features.
+
+    ## Use Cases
+
+    - :info: Capture and inspect outgoing emails during development and testing.
+    - :info: Web UI on port 8025 for browsing messages, attachments, and headers.
+    - :info: SMTP server on port 1025 for receiving email from applications.
+    - :info: Supports API access for automated testing workflows.
+
+    ## Resources
+
+    - **Project**: https://mailpit.axllent.org/
+    - **Documentation**: https://mailpit.axllent.org/docs/
+    - **GitHub**: https://github.com/axllent/mailpit
+    - **Docker Hub**: https://hub.docker.com/r/axllent/mailpit
+  version: 1.24
+  author: Christian Lempa
+  date: '2026-02-28'
+  tags:
+  - traefik
+  - email
+  - swarm
+  draft: true
+schema: '1.2'
+spec:
+  general:
+    vars:
+      service_name:
+        default: mailpit
+      container_name:
+        default: mailpit
+      container_hostname:
+        default: mailpit
+      restart_policy:
+        type: enum
+        options:
+        - unless-stopped
+        - always
+        - on-failure
+        - 'no'
+        default: unless-stopped
+        required: true
+  ports:
+    vars:
+      ports_http:
+        description: Mailpit web UI port
+        type: int
+        default: 8025
+        needs:
+        - traefik_enabled=false
+        - network_mode=bridge
+      ports_smtp:
+        description: Mailpit SMTP port
+        type: int
+        default: 1025
+        needs: network_mode=bridge
+  traefik:
+    toggle: traefik_enabled
+    title: Traefik
+    description: Configure Traefik reverse proxy integration
+    vars:
+      traefik_enabled:
+        type: bool
+        default: false
+        description: Enable Traefik integration
+        needs: network_mode=bridge
+      traefik_entrypoint:
+        type: str
+        description: The Traefik entrypoint
+        default: web
+        required: true
+      traefik_host:
+        default: mailpit
+      traefik_network:
+        type: str
+        description: Traefik network name
+        default: traefik
+        required: true
+        needs: traefik_enabled
+      traefik_network_external:
+        type: bool
+        description: Use external Traefik network
+        default: true
+        needs: traefik_enabled
+      traefik_domain:
+        type: str
+        default: home.arpa
+        required: true
+  traefik_tls:
+    toggle: traefik_tls_enabled
+    title: Traefik TLS
+    description: Configure Traefik TLS/SSL certificates
+    needs: traefik
+    vars:
+      traefik_tls_enabled:
+        type: bool
+        default: false
+        description: Enable Traefik TLS
+      traefik_tls_entrypoint:
+        type: str
+        description: The Traefik TLS entrypoint
+        default: websecure
+        required: true
+      traefik_tls_certresolver:
+        type: str
+        default: cloudflare
+        required: true
+  network:
+    vars:
+      network_mode:
+        type: enum
+        options:
+        - bridge
+        - host
+        - macvlan
+        default: bridge
+      network_name:
+        default: mailpit_network
+      network_external:
+        type: bool
+        default: false
+        description: Whether the network is external
+  swarm:
+    toggle: swarm_enabled
+    title: Docker Swarm
+    vars:
+      swarm_enabled:
+        type: bool
+        default: false
+        description: Enable Docker Swarm mode
+        needs: network_mode=bridge
+      swarm_placement_mode:
+        type: enum
+        options:
+        - replicated
+        - global
+        default: replicated
+        required: true
+      swarm_replicas:
+        type: int
+        default: 1
+        description: Number of replicas
+        needs: swarm_placement_mode=replicated
+        required: true
+      swarm_placement_host:
+        type: str
+        default: ''
+        description: Target hostname for placement constraint
+        needs: swarm_placement_mode=replicated

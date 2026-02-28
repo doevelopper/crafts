@@ -1,0 +1,105 @@
+kind: compose
+metadata:
+  name: Trivy
+  description: |
+    A **comprehensive vulnerability scanner** for containers, filesystems, and git
+    repositories. Detects vulnerabilities in OS packages, language-specific packages,
+    misconfigurations, and secrets.
+
+    ## Use Cases
+
+    - :info: Run as a one-shot scanner against container images, filesystems, or repositories.
+    - :info: Supports multiple output formats: table, JSON, SARIF, CycloneDX.
+    - :info: Mount your source code to `/src` and results will be written to `/results`.
+
+    ## Usage
+
+    After generating, run the scan:
+    ```bash
+    docker compose run --rm trivy
+    ```
+
+    ## Resources
+
+    - **Project**: https://trivy.dev/
+    - **Documentation**: https://aquasecurity.github.io/trivy/
+    - **GitHub**: https://github.com/aquasecurity/trivy
+  version: 0.61.0
+  author: Christian Lempa
+  date: '2026-02-28'
+  tags:
+  - security
+  - scanner
+  draft: true
+schema: '1.2'
+spec:
+  general:
+    vars:
+      service_name:
+        default: trivy
+      container_name:
+        default: trivy
+      restart_policy:
+        type: enum
+        options:
+        - 'no'
+        - unless-stopped
+        - always
+        - on-failure
+        default: 'no'
+        required: true
+  scan:
+    title: Scan Configuration
+    vars:
+      scan_target:
+        type: str
+        description: Scan target (image name, path, or repo URL)
+        default: .
+      scan_type:
+        type: enum
+        description: Type of scan to perform
+        options:
+        - image
+        - filesystem
+        - repo
+        default: filesystem
+      output_format:
+        type: enum
+        description: Output format for scan results
+        options:
+        - table
+        - json
+        - sarif
+        - cyclonedx
+        default: json
+      severity:
+        type: enum
+        description: Severity levels to report
+        options:
+        - CRITICAL
+        - HIGH
+        - MEDIUM
+        - LOW,MEDIUM,HIGH,CRITICAL
+        default: LOW,MEDIUM,HIGH,CRITICAL
+      scan_source_path:
+        type: str
+        description: Host path to source code to scan
+        default: ./src
+      scan_results_path:
+        type: str
+        description: Host path for scan results
+        default: ./results
+  network:
+    vars:
+      network_mode:
+        type: enum
+        options:
+        - bridge
+        - host
+        default: bridge
+      network_name:
+        default: trivy_network
+      network_external:
+        type: bool
+        default: false
+        description: Whether the network is external

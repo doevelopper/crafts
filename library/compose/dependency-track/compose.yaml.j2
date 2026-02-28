@@ -1,0 +1,175 @@
+services:
+{% if database_enabled and not database_external -%}
+  {{ service_name }}-db:
+    image: postgres:17.8
+    {% if not swarm_enabled -%}
+    container_name: {{ container_name }}-db
+    {% endif -%}
+    environment:
+      - POSTGRES_DB={{ database_name }}
+      - POSTGRES_USER={{ database_user }}
+      - POSTGRES_PASSWORD=${DTRACK_DB_PASSWORD}
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    {% if network_mode == 'bridge' -%}
+    networks:
+      - {{ network_name }}
+    {% endif -%}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U {{ database_user }} -d {{ database_name }}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    {% if not swarm_enabled -%}
+    restart: {{ restart_policy }}
+    {% endif -%}
+    {% if swarm_enabled -%}
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+    {% endif -%}
+
+{% endif -%}
+  {{ service_name }}-api:
+    image: dependencytrack/apiserver:4.13.1
+    {% if not swarm_enabled -%}
+    container_name: {{ container_name }}-api
+    {% endif -%}
+    env_file: .env
+    environment:
+      - ALPINE_DATABASE_MODE=external
+      - ALPINE_DATABASE_URL=jdbc:postgresql://{{ database_host }}:{{ database_port }}/{{ database_name }}
+      - ALPINE_DATABASE_DRIVER=org.postgresql.Driver
+      - ALPINE_DATABASE_USERNAME={{ database_user }}
+      - ALPINE_DATABASE_PASSWORD=${DTRACK_DB_PASSWORD}
+    volumes:
+      - api_data:/data
+    {% if network_mode == 'bridge' -%}
+    networks:
+      - {{ network_name }}
+    {% endif -%}
+    {% if database_enabled and not database_external -%}
+    depends_on:
+      {{ service_name }}-db:
+        condition: service_healthy
+    {% endif -%}
+    {% if network_mode == 'bridge' -%}
+    ports:
+      - "{{ ports_api }}:8080"
+    {% endif -%}
+    {% if not swarm_enabled -%}
+    restart: {{ restart_policy }}
+    {% endif -%}
+    {% if swarm_enabled -%}
+    deploy:
+      replicas: 1
+    {% endif -%}
+
+  {{ service_name }}-frontend:
+    image: dependencytrack/frontend:4.13.1
+    {% if not swarm_enabled -%}
+    container_name: {{ container_name }}-frontend
+    {% endif -%}
+    environment:
+      - API_BASE_URL=http://{{ service_name }}-api:8080
+    {% if network_mode == 'bridge' -%}
+    networks:
+      {% if traefik_enabled -%}
+      - {{ traefik_network }}
+      {% endif -%}
+      - {{ network_name }}
+    {% else -%}
+    network_mode: {{ network_mode }}
+    {% endif -%}
+    depends_on:
+      - {{ service_name }}-api
+    {% if not traefik_enabled and network_mode == 'bridge' -%}
+    ports:
+      - "{{ ports_http }}:8080"
+    {% endif -%}
+    {% if traefik_enabled -%}
+    labels:
+      - traefik.enable=true
+      {% if network_mode == 'bridge' -%}
+      - traefik.docker.network={{ traefik_network }}
+      {% endif -%}
+      - traefik.http.routers.{{ service_name }}.rule=Host(`{{ traefik_host }}.{{ traefik_domain }}`)
+      {% if traefik_tls_enabled -%}
+      - traefik.http.routers.{{ service_name }}.entrypoints={{ traefik_tls_entrypoint }}
+      - traefik.http.routers.{{ service_name }}.tls=true
+      - traefik.http.routers.{{ service_name }}.tls.certresolver={{ traefik_tls_certresolver }}
+      {% else -%}
+      - traefik.http.routers.{{ service_name }}.entrypoints={{ traefik_entrypoint }}
+      {% endif -%}
+      - traefik.http.services.{{ service_name }}-web.loadbalancer.server.port=8080
+      - traefik.http.routers.{{ service_name }}.service={{ service_name }}-web
+    {% endif -%}
+    {% if not swarm_enabled -%}
+    restart: {{ restart_policy }}
+    {% endif -%}
+    {% if swarm_enabled -%}
+    deploy:
+      mode: {{ swarm_placement_mode }}
+      {% if swarm_placement_mode == 'replicated' -%}
+      replicas: {{ swarm_replicas }}
+      {% endif -%}
+      {% if swarm_placement_host -%}
+      placement:
+        constraints:
+          - node.hostname == {{ swarm_placement_host }}
+      {% endif -%}
+      {% if traefik_enabled -%}
+      labels:
+        - traefik.enable=true
+        - traefik.docker.network={{ traefik_network }}
+        - traefik.http.routers.{{ service_name }}.rule=Host(`{{ traefik_host }}.{{ traefik_domain }}`)
+        {% if traefik_tls_enabled -%}
+        - traefik.http.routers.{{ service_name }}.entrypoints={{ traefik_tls_entrypoint }}
+        - traefik.http.routers.{{ service_name }}.tls=true
+        - traefik.http.routers.{{ service_name }}.tls.certresolver={{ traefik_tls_certresolver }}
+        {% else -%}
+        - traefik.http.routers.{{ service_name }}.entrypoints={{ traefik_entrypoint }}
+        {% endif -%}
+        - traefik.http.services.{{ service_name }}-web.loadbalancer.server.port=8080
+        - traefik.http.routers.{{ service_name }}.service={{ service_name }}-web
+      {% endif -%}
+    {% endif -%}
+
+volumes:
+  api_data:
+    driver: local
+{% if database_enabled and not database_external -%}
+  db_data:
+    driver: local
+{% endif -%}
+
+{% if network_mode == 'bridge' -%}
+networks:
+  {{ network_name }}:
+  {% if network_external -%}
+    external: true
+  {% else -%}
+    {% if swarm_enabled -%}
+    driver: overlay
+    attachable: true
+    {% else -%}
+    driver: bridge
+    {% endif -%}
+  {% endif -%}
+  {% if traefik_enabled -%}
+  {{ traefik_network }}:
+  {% if traefik_network_external -%}
+    external: true
+  {% else -%}
+    {% if swarm_enabled -%}
+    driver: overlay
+    attachable: true
+    {% else -%}
+    driver: bridge
+    {% endif -%}
+  {% endif -%}
+  {% endif -%}
+{% endif -%}

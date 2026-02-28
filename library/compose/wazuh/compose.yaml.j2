@@ -1,0 +1,224 @@
+services:
+  {{ service_name }}-indexer:
+    image: wazuh/wazuh-indexer:4.11.2
+    {% if not swarm_enabled -%}
+    container_name: {{ container_name }}-indexer
+    {% endif -%}
+    environment:
+      - OPENSEARCH_JAVA_OPTS=-Xms1g -Xmx1g
+      - bootstrap.memory_lock=true
+      - discovery.type=single-node
+      - plugins.security.disabled=true
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      nofile:
+        soft: 65536
+        hard: 65536
+    volumes:
+      - indexer_data:/var/lib/wazuh-indexer
+    {% if network_mode == 'bridge' -%}
+    networks:
+      - {{ network_name }}
+    {% endif -%}
+    {% if not swarm_enabled -%}
+    restart: {{ restart_policy }}
+    {% endif -%}
+
+  {{ service_name }}-manager:
+    image: wazuh/wazuh-manager:4.11.2
+    {% if not swarm_enabled -%}
+    container_name: {{ container_name }}-manager
+    hostname: {{ container_hostname }}-manager
+    {% endif -%}
+    environment:
+      - INDEXER_URL=https://{{ service_name }}-indexer:9200
+      - FILEBEAT_SSL_VERIFICATION_MODE=none
+      - API_USERNAME={{ api_user }}
+      - API_PASSWORD=${WAZUH_API_PASSWORD}
+    volumes:
+      - manager_data:/var/ossec/data
+      - manager_etc:/var/ossec/etc
+      - manager_logs:/var/ossec/logs
+    {% if network_mode == 'bridge' -%}
+    networks:
+      - {{ network_name }}
+    ports:
+      - "{{ ports_agent }}:1514"
+      - "{{ ports_syslog }}:514/udp"
+    {% else -%}
+    network_mode: {{ network_mode }}
+    {% endif -%}
+    depends_on:
+      - {{ service_name }}-indexer
+    {% if not swarm_enabled -%}
+    restart: {{ restart_policy }}
+    {% endif -%}
+
+  {{ service_name }}-dashboard:
+    image: wazuh/wazuh-dashboard:4.11.2
+    {% if not swarm_enabled -%}
+    container_name: {{ container_name }}-dashboard
+    {% endif -%}
+    environment:
+      - INDEXER_USERNAME=admin
+      - INDEXER_PASSWORD=${WAZUH_INDEXER_PASSWORD}
+      - WAZUH_API_URL=https://{{ service_name }}-manager
+      - DASHBOARD_USERNAME=kibanaserver
+      - DASHBOARD_PASSWORD=${WAZUH_INDEXER_PASSWORD}
+      - API_USERNAME={{ api_user }}
+      - API_PASSWORD=${WAZUH_API_PASSWORD}
+    {% if network_mode == 'bridge' -%}
+    networks:
+      {% if traefik_enabled -%}
+      - {{ traefik_network }}
+      {% endif -%}
+      - {{ network_name }}
+    {% else -%}
+    network_mode: {{ network_mode }}
+    {% endif -%}
+    depends_on:
+      - {{ service_name }}-indexer
+      - {{ service_name }}-manager
+    {% if not traefik_enabled and network_mode == 'bridge' -%}
+    ports:
+      - "{{ ports_http }}:5601"
+    {% endif -%}
+    {% if traefik_enabled -%}
+    labels:
+      - traefik.enable=true
+      {% if network_mode == 'bridge' -%}
+      - traefik.docker.network={{ traefik_network }}
+      {% endif -%}
+      - traefik.http.routers.{{ service_name }}.rule=Host(`{{ traefik_host }}.{{ traefik_domain }}`)
+      {% if traefik_tls_enabled -%}
+      - traefik.http.routers.{{ service_name }}.entrypoints={{ traefik_tls_entrypoint }}
+      - traefik.http.routers.{{ service_name }}.tls=true
+      - traefik.http.routers.{{ service_name }}.tls.certresolver={{ traefik_tls_certresolver }}
+      {% else -%}
+      - traefik.http.routers.{{ service_name }}.entrypoints={{ traefik_entrypoint }}
+      {% endif -%}
+      - traefik.http.services.{{ service_name }}-web.loadbalancer.server.port=5601
+      - traefik.http.routers.{{ service_name }}.service={{ service_name }}-web
+    {% endif -%}
+    {% if not swarm_enabled -%}
+    restart: {{ restart_policy }}
+    {% endif -%}
+    {% if swarm_enabled -%}
+    deploy:
+      mode: {{ swarm_placement_mode }}
+      {% if swarm_placement_mode == 'replicated' -%}
+      replicas: {{ swarm_replicas }}
+      {% endif -%}
+      {% if swarm_placement_host -%}
+      placement:
+        constraints:
+          - node.hostname == {{ swarm_placement_host }}
+      {% endif -%}
+      {% if traefik_enabled -%}
+      labels:
+        - traefik.enable=true
+        - traefik.docker.network={{ traefik_network }}
+        - traefik.http.routers.{{ service_name }}.rule=Host(`{{ traefik_host }}.{{ traefik_domain }}`)
+        {% if traefik_tls_enabled -%}
+        - traefik.http.routers.{{ service_name }}.entrypoints={{ traefik_tls_entrypoint }}
+        - traefik.http.routers.{{ service_name }}.tls=true
+        - traefik.http.routers.{{ service_name }}.tls.certresolver={{ traefik_tls_certresolver }}
+        {% else -%}
+        - traefik.http.routers.{{ service_name }}.entrypoints={{ traefik_entrypoint }}
+        {% endif -%}
+        - traefik.http.services.{{ service_name }}-web.loadbalancer.server.port=5601
+        - traefik.http.routers.{{ service_name }}.service={{ service_name }}-web
+      {% endif -%}
+    {% endif -%}
+
+volumes:
+{% if volume_mode == 'local' -%}
+  indexer_data:
+    driver: local
+  manager_data:
+    driver: local
+  manager_etc:
+    driver: local
+  manager_logs:
+    driver: local
+{% elif volume_mode == 'mount' -%}
+  indexer_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: {{ volume_mount_path }}/indexer
+  manager_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: {{ volume_mount_path }}/manager/data
+  manager_etc:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: {{ volume_mount_path }}/manager/etc
+  manager_logs:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: {{ volume_mount_path }}/manager/logs
+{% elif volume_mode == 'nfs' -%}
+  indexer_data:
+    driver: local
+    driver_opts:
+      type: nfs
+      o: addr={{ volume_nfs_server }},nfsvers=4,{{ volume_nfs_options }}
+      device: ":{{ volume_nfs_path }}/indexer"
+  manager_data:
+    driver: local
+    driver_opts:
+      type: nfs
+      o: addr={{ volume_nfs_server }},nfsvers=4,{{ volume_nfs_options }}
+      device: ":{{ volume_nfs_path }}/manager/data"
+  manager_etc:
+    driver: local
+    driver_opts:
+      type: nfs
+      o: addr={{ volume_nfs_server }},nfsvers=4,{{ volume_nfs_options }}
+      device: ":{{ volume_nfs_path }}/manager/etc"
+  manager_logs:
+    driver: local
+    driver_opts:
+      type: nfs
+      o: addr={{ volume_nfs_server }},nfsvers=4,{{ volume_nfs_options }}
+      device: ":{{ volume_nfs_path }}/manager/logs"
+{% endif -%}
+
+{% if network_mode == 'bridge' -%}
+networks:
+  {{ network_name }}:
+  {% if network_external -%}
+    external: true
+  {% else -%}
+    {% if swarm_enabled -%}
+    driver: overlay
+    attachable: true
+    {% else -%}
+    driver: bridge
+    {% endif -%}
+  {% endif -%}
+  {% if traefik_enabled -%}
+  {{ traefik_network }}:
+  {% if traefik_network_external -%}
+    external: true
+  {% else -%}
+    {% if swarm_enabled -%}
+    driver: overlay
+    attachable: true
+    {% else -%}
+    driver: bridge
+    {% endif -%}
+  {% endif -%}
+  {% endif -%}
+{% endif -%}

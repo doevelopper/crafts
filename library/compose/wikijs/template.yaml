@@ -1,0 +1,166 @@
+kind: compose
+metadata:
+  name: Wiki.js
+  description: |
+    A **modern, lightweight wiki** engine with powerful features. Supports Markdown,
+    Git-backed storage, LDAP/OAuth authentication, and full-text search.
+
+    ## Prerequisites
+
+    - :info: Supports SQLite (default) or PostgreSQL for storage.
+    - :info: Built-in Git sync for version-controlled documentation.
+    - :info: Supports authentication via local, LDAP, SAML, OAuth2, and OpenID Connect.
+
+    ## Resources
+
+    - **Project**: https://js.wiki/
+    - **Documentation**: https://docs.requarks.io/
+    - **GitHub**: https://github.com/requarks/wiki
+  version: 2.5.306
+  author: Christian Lempa
+  date: '2026-02-28'
+  tags:
+  - traefik
+  - database
+  draft: true
+schema: '1.2'
+spec:
+  general:
+    vars:
+      service_name:
+        default: wikijs
+      container_name:
+        default: wikijs
+      container_hostname:
+        default: wikijs
+      restart_policy:
+        type: enum
+        options:
+        - unless-stopped
+        - always
+        - on-failure
+        - 'no'
+        default: unless-stopped
+        required: true
+  database:
+    title: Database
+    toggle: database_enabled
+    vars:
+      database_enabled:
+        type: bool
+        description: Use PostgreSQL database (recommended)
+        default: true
+        extra: SQLite is used if disabled
+      database_external:
+        type: bool
+        default: false
+        needs: database_enabled
+      database_host:
+        type: str
+        default: wikijs-db
+        needs: database_enabled
+      database_port:
+        type: int
+        default: 5432
+        needs: database_enabled
+      database_name:
+        type: str
+        default: wikijs
+        needs: database_enabled
+      database_user:
+        type: str
+        default: wikijs
+        needs: database_enabled
+      database_password:
+        type: str
+        sensitive: true
+        needs: database_enabled
+  ports:
+    vars:
+      ports_http:
+        type: int
+        default: 3000
+        needs:
+        - traefik_enabled=false
+        - network_mode=bridge
+  traefik:
+    toggle: traefik_enabled
+    title: Traefik
+    vars:
+      traefik_enabled:
+        type: bool
+        default: false
+        needs: network_mode=bridge
+      traefik_entrypoint:
+        type: str
+        default: web
+        required: true
+      traefik_host:
+        default: wiki
+      traefik_network:
+        type: str
+        default: traefik
+        required: true
+        needs: traefik_enabled
+      traefik_network_external:
+        type: bool
+        default: true
+        needs: traefik_enabled
+      traefik_domain:
+        type: str
+        default: home.arpa
+        required: true
+  traefik_tls:
+    toggle: traefik_tls_enabled
+    title: Traefik TLS
+    needs: traefik
+    vars:
+      traefik_tls_enabled:
+        type: bool
+        default: false
+      traefik_tls_entrypoint:
+        type: str
+        default: websecure
+        required: true
+      traefik_tls_certresolver:
+        type: str
+        default: cloudflare
+        required: true
+  network:
+    vars:
+      network_mode:
+        type: enum
+        options:
+        - bridge
+        - host
+        - macvlan
+        default: bridge
+      network_name:
+        default: wikijs_network
+      network_external:
+        type: bool
+        default: false
+  swarm:
+    toggle: swarm_enabled
+    title: Docker Swarm
+    vars:
+      swarm_enabled:
+        type: bool
+        default: false
+        needs: network_mode=bridge
+      swarm_placement_mode:
+        type: enum
+        options:
+        - replicated
+        - global
+        default: replicated
+        required: true
+      swarm_replicas:
+        type: int
+        default: 1
+        needs: swarm_placement_mode=replicated
+        required: true
+      swarm_placement_host:
+        type: str
+        default: ''
+        needs: swarm_placement_mode=replicated

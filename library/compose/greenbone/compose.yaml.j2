@@ -1,0 +1,289 @@
+services:
+  {{ service_name }}-db:
+    image: postgres:17.8
+    {% if not swarm_enabled -%}
+    container_name: {{ container_name }}-db
+    {% endif -%}
+    environment:
+      - POSTGRES_DB=gvmd
+      - POSTGRES_USER=gvmd
+      - POSTGRES_PASSWORD=${GVMD_ADMIN_PASSWORD}
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    {% if network_mode == 'bridge' -%}
+    networks:
+      - {{ network_name }}
+    {% endif -%}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gvmd -d gvmd"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    {% if not swarm_enabled -%}
+    restart: {{ restart_policy }}
+    {% endif -%}
+    {% if swarm_enabled -%}
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+    {% endif -%}
+
+  {{ service_name }}-redis:
+    image: redis:7
+    {% if not swarm_enabled -%}
+    container_name: {{ container_name }}-redis
+    {% endif -%}
+    command: redis-server --unixsocket /run/redis/redis.sock --unixsocketperm 770 --save "" --loglevel warning
+    volumes:
+      - redis_socket:/run/redis
+    {% if network_mode == 'bridge' -%}
+    networks:
+      - {{ network_name }}
+    {% endif -%}
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -s /run/redis/redis.sock ping | grep -q PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    {% if not swarm_enabled -%}
+    restart: {{ restart_policy }}
+    {% endif -%}
+    {% if swarm_enabled -%}
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+    {% endif -%}
+
+  {{ service_name }}-notus:
+    image: greenbone/notus-scanner:22.6.5
+    {% if not swarm_enabled -%}
+    container_name: {{ container_name }}-notus
+    {% endif -%}
+    volumes:
+      - notus_data:/var/lib/notus
+      - openvas_data:/var/lib/openvas
+      - redis_socket:/run/redis
+    {% if network_mode == 'bridge' -%}
+    networks:
+      - {{ network_name }}
+    {% endif -%}
+    depends_on:
+      {{ service_name }}-redis:
+        condition: service_healthy
+    {% if not swarm_enabled -%}
+    restart: {{ restart_policy }}
+    {% endif -%}
+    {% if swarm_enabled -%}
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+    {% endif -%}
+
+  {{ service_name }}-ospd:
+    image: greenbone/ospd-openvas:22.7.1
+    {% if not swarm_enabled -%}
+    container_name: {{ container_name }}-ospd
+    {% endif -%}
+    volumes:
+      - ospd_socket:/run/ospd
+      - openvas_data:/var/lib/openvas
+      - redis_socket:/run/redis
+    {% if network_mode == 'bridge' -%}
+    networks:
+      - {{ network_name }}
+    {% endif -%}
+    depends_on:
+      {{ service_name }}-redis:
+        condition: service_healthy
+    {% if not swarm_enabled -%}
+    restart: {{ restart_policy }}
+    {% endif -%}
+    {% if swarm_enabled -%}
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+    {% endif -%}
+
+  {{ service_name }}-scanner:
+    image: greenbone/openvas-scanner:23.11.0
+    {% if not swarm_enabled -%}
+    container_name: {{ container_name }}-scanner
+    {% endif -%}
+    volumes:
+      - openvas_data:/var/lib/openvas
+      - redis_socket:/run/redis
+    {% if network_mode == 'bridge' -%}
+    networks:
+      - {{ network_name }}
+    {% endif -%}
+    depends_on:
+      {{ service_name }}-redis:
+        condition: service_healthy
+    {% if not swarm_enabled -%}
+    restart: {{ restart_policy }}
+    {% endif -%}
+    {% if swarm_enabled -%}
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+    {% endif -%}
+
+  {{ service_name }}-gvmd:
+    image: greenbone/gvmd:23.11.0
+    {% if not swarm_enabled -%}
+    container_name: {{ container_name }}-gvmd
+    {% endif -%}
+    environment:
+      - GVMD_POSTGRESQL_URI=postgresql://gvmd:${GVMD_ADMIN_PASSWORD}@{{ service_name }}-db:5432/gvmd
+    volumes:
+      - gvmd_data:/var/lib/gvm
+      - gvmd_socket:/run/gvmd
+      - openvas_data:/var/lib/openvas
+      - ospd_socket:/run/ospd
+    {% if network_mode == 'bridge' -%}
+    networks:
+      - {{ network_name }}
+    {% endif -%}
+    depends_on:
+      {{ service_name }}-db:
+        condition: service_healthy
+      {{ service_name }}-ospd:
+        condition: service_started
+    {% if not swarm_enabled -%}
+    restart: {{ restart_policy }}
+    {% endif -%}
+    {% if swarm_enabled -%}
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+    {% endif -%}
+
+  {{ service_name }}:
+    image: greenbone/gsad:22.11.0
+    {% if not swarm_enabled -%}
+    container_name: {{ container_name }}
+    hostname: {{ container_hostname }}
+    {% endif -%}
+    volumes:
+      - gvmd_socket:/run/gvmd
+    {% if network_mode == 'bridge' -%}
+    networks:
+      {% if traefik_enabled -%}
+      - {{ traefik_network }}
+      {% endif -%}
+      - {{ network_name }}
+    {% else -%}
+    network_mode: {{ network_mode }}
+    {% endif -%}
+    depends_on:
+      {{ service_name }}-gvmd:
+        condition: service_started
+    {% if not traefik_enabled and network_mode == 'bridge' -%}
+    ports:
+      - "{{ ports_http }}:9392"
+    {% endif -%}
+    {% if traefik_enabled -%}
+    labels:
+      - traefik.enable=true
+      {% if network_mode == 'bridge' -%}
+      - traefik.docker.network={{ traefik_network }}
+      {% endif -%}
+      - traefik.http.routers.{{ service_name }}.rule=Host(`{{ traefik_host }}.{{ traefik_domain }}`)
+      {% if traefik_tls_enabled -%}
+      - traefik.http.routers.{{ service_name }}.entrypoints={{ traefik_tls_entrypoint }}
+      - traefik.http.routers.{{ service_name }}.tls=true
+      - traefik.http.routers.{{ service_name }}.tls.certresolver={{ traefik_tls_certresolver }}
+      {% else -%}
+      - traefik.http.routers.{{ service_name }}.entrypoints={{ traefik_entrypoint }}
+      {% endif -%}
+      - traefik.http.services.{{ service_name }}-web.loadbalancer.server.port=9392
+      - traefik.http.routers.{{ service_name }}.service={{ service_name }}-web
+    {% endif -%}
+    {% if not swarm_enabled -%}
+    restart: {{ restart_policy }}
+    {% endif -%}
+    {% if swarm_enabled -%}
+    deploy:
+      mode: {{ swarm_placement_mode }}
+      {% if swarm_placement_mode == 'replicated' -%}
+      replicas: {{ swarm_replicas }}
+      {% endif -%}
+      {% if swarm_placement_host -%}
+      placement:
+        constraints:
+          - node.hostname == {{ swarm_placement_host }}
+      {% endif -%}
+      {% if traefik_enabled -%}
+      labels:
+        - traefik.enable=true
+        - traefik.docker.network={{ traefik_network }}
+        - traefik.http.routers.{{ service_name }}.rule=Host(`{{ traefik_host }}.{{ traefik_domain }}`)
+        {% if traefik_tls_enabled -%}
+        - traefik.http.routers.{{ service_name }}.entrypoints={{ traefik_tls_entrypoint }}
+        - traefik.http.routers.{{ service_name }}.tls=true
+        - traefik.http.routers.{{ service_name }}.tls.certresolver={{ traefik_tls_certresolver }}
+        {% else -%}
+        - traefik.http.routers.{{ service_name }}.entrypoints={{ traefik_entrypoint }}
+        {% endif -%}
+        - traefik.http.services.{{ service_name }}-web.loadbalancer.server.port=9392
+        - traefik.http.routers.{{ service_name }}.service={{ service_name }}-web
+      {% endif -%}
+    {% endif -%}
+
+volumes:
+  gvmd_data:
+    driver: local
+  gvmd_socket:
+    driver: local
+  openvas_data:
+    driver: local
+  ospd_socket:
+    driver: local
+  notus_data:
+    driver: local
+  redis_socket:
+    driver: local
+  db_data:
+    driver: local
+
+{% if network_mode == 'bridge' -%}
+networks:
+  {{ network_name }}:
+  {% if network_external -%}
+    external: true
+  {% else -%}
+    {% if swarm_enabled -%}
+    driver: overlay
+    attachable: true
+    {% else -%}
+    driver: bridge
+    {% endif -%}
+  {% endif -%}
+  {% if traefik_enabled -%}
+  {{ traefik_network }}:
+  {% if traefik_network_external -%}
+    external: true
+  {% else -%}
+    {% if swarm_enabled -%}
+    driver: overlay
+    attachable: true
+    {% else -%}
+    driver: bridge
+    {% endif -%}
+  {% endif -%}
+  {% endif -%}
+{% endif -%}

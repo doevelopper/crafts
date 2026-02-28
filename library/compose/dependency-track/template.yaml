@@ -1,0 +1,183 @@
+kind: compose
+metadata:
+  name: Dependency-Track
+  description: |
+    An **intelligent Software Composition Analysis** (SCA) platform by OWASP that allows
+    organizations to identify and reduce risk in the software supply chain. Supports
+    CycloneDX SBOM ingestion and continuous monitoring.
+
+    ## Prerequisites
+
+    - :info: Requires PostgreSQL for persistent storage.
+    - :info: Consists of API server (backend) and frontend (UI) components.
+    - :info: Import SBOMs via the web UI or REST API after initial setup.
+
+    ## Resources
+
+    - **Project**: https://dependencytrack.org/
+    - **Documentation**: https://docs.dependencytrack.org/
+    - **GitHub**: https://github.com/DependencyTrack/dependency-track
+  version: 4.13.1
+  author: Christian Lempa
+  date: '2026-02-28'
+  tags:
+  - traefik
+  - database
+  - security
+  draft: true
+schema: '1.2'
+spec:
+  general:
+    vars:
+      service_name:
+        default: dependency-track
+      container_name:
+        default: dependency-track
+      container_hostname:
+        default: dependency-track
+      restart_policy:
+        type: enum
+        options:
+        - unless-stopped
+        - always
+        - on-failure
+        - 'no'
+        default: unless-stopped
+        required: true
+  database:
+    title: Database
+    toggle: database_enabled
+    description: PostgreSQL database configuration
+    vars:
+      database_enabled:
+        type: bool
+        description: Use PostgreSQL database
+        default: true
+      database_external:
+        type: bool
+        description: Use external PostgreSQL
+        default: false
+        needs: database_enabled
+      database_host:
+        type: str
+        description: PostgreSQL host
+        default: dependency-track-db
+        needs: database_enabled
+      database_port:
+        type: int
+        description: PostgreSQL port
+        default: 5432
+        needs: database_enabled
+      database_name:
+        type: str
+        description: Database name
+        default: dtrack
+        needs: database_enabled
+      database_user:
+        type: str
+        description: Database username
+        default: dtrack
+        needs: database_enabled
+      database_password:
+        type: str
+        description: Database password
+        sensitive: true
+        needs: database_enabled
+  ports:
+    vars:
+      ports_http:
+        description: Frontend web UI port
+        type: int
+        default: 8080
+        needs:
+        - traefik_enabled=false
+        - network_mode=bridge
+      ports_api:
+        description: API server port
+        type: int
+        default: 8081
+        needs: network_mode=bridge
+  traefik:
+    toggle: traefik_enabled
+    title: Traefik
+    vars:
+      traefik_enabled:
+        type: bool
+        default: false
+        description: Enable Traefik integration
+        needs: network_mode=bridge
+      traefik_entrypoint:
+        type: str
+        description: The Traefik entrypoint
+        default: web
+        required: true
+      traefik_host:
+        default: dtrack
+      traefik_network:
+        type: str
+        default: traefik
+        required: true
+        needs: traefik_enabled
+      traefik_network_external:
+        type: bool
+        default: true
+        needs: traefik_enabled
+      traefik_domain:
+        type: str
+        default: home.arpa
+        required: true
+  traefik_tls:
+    toggle: traefik_tls_enabled
+    title: Traefik TLS
+    needs: traefik
+    vars:
+      traefik_tls_enabled:
+        type: bool
+        default: false
+        description: Enable Traefik TLS
+      traefik_tls_entrypoint:
+        type: str
+        default: websecure
+        required: true
+      traefik_tls_certresolver:
+        type: str
+        default: cloudflare
+        required: true
+  network:
+    vars:
+      network_mode:
+        type: enum
+        options:
+        - bridge
+        - host
+        - macvlan
+        default: bridge
+      network_name:
+        default: dtrack_network
+      network_external:
+        type: bool
+        default: false
+  swarm:
+    toggle: swarm_enabled
+    title: Docker Swarm
+    vars:
+      swarm_enabled:
+        type: bool
+        default: false
+        needs: network_mode=bridge
+      swarm_placement_mode:
+        type: enum
+        options:
+        - replicated
+        - global
+        default: replicated
+        required: true
+      swarm_replicas:
+        type: int
+        default: 1
+        needs: swarm_placement_mode=replicated
+        required: true
+      swarm_placement_host:
+        type: str
+        default: ''
+        needs: swarm_placement_mode=replicated
