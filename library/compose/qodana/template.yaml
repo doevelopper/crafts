@@ -1,0 +1,111 @@
+kind: compose
+metadata:
+  name: Qodana
+  description: |
+    A **code quality analysis** platform by JetBrains. Brings the power of JetBrains IDEs'
+    code inspections to your CI/CD pipeline. Supports Python, Java, Kotlin, JavaScript,
+    TypeScript, Go, PHP, C, C++, C#, and more.
+
+    ## Use Cases
+
+    - :info: Run as a one-shot code analysis against a mounted project directory.
+    - :info: Select the appropriate variant for your language (Python, JVM, Clang, or CPP).
+    - :info: Results are written in SARIF format to the `/data/results` directory.
+    - :info: A Qodana Cloud token is optional but enables cloud-based reporting.
+
+    ## Variants
+
+    - **python**: Python projects (based on PyCharm)
+    - **jvm**: Java, Kotlin, Groovy projects (based on IntelliJ IDEA)
+    - **clang**: C and Objective-C projects (based on CLion)
+    - **cpp**: C++ projects (based on CLion)
+
+    ## Usage
+
+    After generating, run the analysis:
+    ```bash
+    docker compose run --rm qodana
+    ```
+
+    ## Resources
+
+    - **Project**: https://www.jetbrains.com/qodana/
+    - **Documentation**: https://www.jetbrains.com/help/qodana/
+    - **Docker Hub**: https://hub.docker.com/u/jetbrains (qodana-* images)
+  version: 2025.1
+  author: Christian Lempa
+  date: '2026-02-28'
+  tags:
+  - security
+  - code-quality
+  draft: true
+schema: '1.2'
+spec:
+  general:
+    vars:
+      service_name:
+        default: qodana
+      container_name:
+        default: qodana
+      restart_policy:
+        type: enum
+        options:
+        - 'no'
+        - unless-stopped
+        - always
+        - on-failure
+        default: 'no'
+        required: true
+  scan:
+    title: Scan Configuration
+    vars:
+      qodana_variant:
+        type: enum
+        description: Qodana analysis variant (language/framework)
+        options:
+        - python
+        - jvm
+        - clang
+        - cpp
+        default: python
+      scan_source_path:
+        type: str
+        description: Host path to project source code
+        default: ./src
+      scan_results_path:
+        type: str
+        description: Host path for analysis results
+        default: ./results
+      scan_cache_path:
+        type: str
+        description: Host path for Qodana cache (speeds up subsequent runs)
+        default: ./cache
+  cloud:
+    title: Qodana Cloud
+    toggle: cloud_enabled
+    description: Optional Qodana Cloud integration for centralized reporting
+    vars:
+      cloud_enabled:
+        type: bool
+        description: Enable Qodana Cloud reporting
+        default: false
+      cloud_token:
+        type: str
+        description: Qodana Cloud project token
+        sensitive: true
+        needs: cloud_enabled
+        extra: Get your token from https://qodana.cloud/
+  network:
+    vars:
+      network_mode:
+        type: enum
+        options:
+        - bridge
+        - host
+        default: bridge
+      network_name:
+        default: qodana_network
+      network_external:
+        type: bool
+        default: false
+        description: Whether the network is external

@@ -1,0 +1,224 @@
+kind: compose
+metadata:
+  name: SonarQube
+  description: |
+    A **code quality and security analysis** platform. Performs static analysis (SAST),
+    detects bugs, vulnerabilities, code smells, and enforces coding standards across
+    30+ programming languages.
+
+    ## Prerequisites
+
+    - :warning: SonarQube **requires PostgreSQL** in production. The embedded H2 database
+      is for evaluation only.
+    - :info: Requires `vm.max_map_count=524288` and `fs.file-max=131072` on the Docker host.
+      Set via: `sysctl -w vm.max_map_count=524288 && sysctl -w fs.file-max=131072`
+    - :info: Default credentials are `admin` / `admin`. Change immediately after first login.
+    - :info: Community Edition supports 19 languages. For more, consider Developer/Enterprise editions.
+
+    ## Resources
+
+    - **Project**: https://www.sonarsource.com/products/sonarqube/
+    - **Documentation**: https://docs.sonarsource.com/sonarqube-community/latest/
+    - **Docker Hub**: https://hub.docker.com/_/sonarqube
+  version: 25.4.0
+  author: Christian Lempa
+  date: '2026-02-28'
+  tags:
+  - traefik
+  - database
+  - swarm
+  draft: true
+schema: '1.2'
+spec:
+  general:
+    vars:
+      service_name:
+        default: sonarqube
+      container_name:
+        default: sonarqube
+      container_hostname:
+        default: sonarqube
+      restart_policy:
+        type: enum
+        options:
+        - unless-stopped
+        - always
+        - on-failure
+        - 'no'
+        default: unless-stopped
+        required: true
+  database:
+    title: Database
+    toggle: database_enabled
+    description: PostgreSQL database configuration (required for production)
+    vars:
+      database_enabled:
+        type: bool
+        description: Use PostgreSQL database (required for production)
+        default: true
+        extra: SonarQube requires PostgreSQL. H2 is for evaluation only.
+      database_external:
+        type: bool
+        description: Use external PostgreSQL (skip embedded container)
+        default: false
+        needs: database_enabled
+      database_host:
+        type: str
+        description: PostgreSQL host
+        default: sonarqube-db
+        needs: database_enabled
+      database_port:
+        type: int
+        description: PostgreSQL port
+        default: 5432
+        needs: database_enabled
+      database_name:
+        type: str
+        description: Database name
+        default: sonarqube
+        needs: database_enabled
+      database_user:
+        type: str
+        description: Database username
+        default: sonarqube
+        needs: database_enabled
+      database_password:
+        type: str
+        description: Database password
+        sensitive: true
+        needs: database_enabled
+  ports:
+    vars:
+      ports_http:
+        description: SonarQube web UI port
+        type: int
+        default: 9000
+        needs:
+        - traefik_enabled=false
+        - network_mode=bridge
+  traefik:
+    toggle: traefik_enabled
+    title: Traefik
+    description: Configure Traefik reverse proxy integration
+    vars:
+      traefik_enabled:
+        type: bool
+        default: false
+        description: Enable Traefik integration
+        needs: network_mode=bridge
+      traefik_entrypoint:
+        type: str
+        description: The Traefik entrypoint
+        default: web
+        required: true
+      traefik_host:
+        default: sonarqube
+      traefik_network:
+        type: str
+        description: Traefik network name
+        default: traefik
+        required: true
+        needs: traefik_enabled
+      traefik_network_external:
+        type: bool
+        description: Use external Traefik network
+        default: true
+        needs: traefik_enabled
+      traefik_domain:
+        type: str
+        default: home.arpa
+        required: true
+  traefik_tls:
+    toggle: traefik_tls_enabled
+    title: Traefik TLS
+    description: Configure Traefik TLS/SSL certificates
+    needs: traefik
+    vars:
+      traefik_tls_enabled:
+        type: bool
+        default: false
+        description: Enable Traefik TLS
+      traefik_tls_entrypoint:
+        type: str
+        description: The Traefik TLS entrypoint
+        default: websecure
+        required: true
+      traefik_tls_certresolver:
+        type: str
+        default: cloudflare
+        required: true
+  volume:
+    title: Volume Storage
+    vars:
+      volume_mode:
+        type: enum
+        description: Volume storage mode
+        options:
+        - local
+        - mount
+        - nfs
+        default: local
+      volume_mount_path:
+        type: str
+        description: Host path for bind mount
+        default: /srv/sonarqube
+        needs: volume_mode=mount
+      volume_nfs_server:
+        type: str
+        description: NFS server address
+        default: ''
+        needs: volume_mode=nfs
+      volume_nfs_path:
+        type: str
+        description: NFS export path
+        default: /mnt/sonarqube
+        needs: volume_mode=nfs
+      volume_nfs_options:
+        type: str
+        description: NFS mount options
+        default: rw,nolock,soft
+        needs: volume_mode=nfs
+  network:
+    vars:
+      network_mode:
+        type: enum
+        options:
+        - bridge
+        - host
+        - macvlan
+        default: bridge
+      network_name:
+        default: sonarqube_network
+      network_external:
+        type: bool
+        default: false
+        description: Whether the network is external
+  swarm:
+    toggle: swarm_enabled
+    title: Docker Swarm
+    description: Configure Docker Swarm deployment
+    vars:
+      swarm_enabled:
+        type: bool
+        default: false
+        description: Enable Docker Swarm mode
+        needs: network_mode=bridge
+      swarm_placement_mode:
+        type: enum
+        options:
+        - replicated
+        - global
+        default: replicated
+        required: true
+      swarm_replicas:
+        type: int
+        default: 1
+        description: Number of replicas
+        needs: swarm_placement_mode=replicated
+        required: true
+      swarm_placement_host:
+        type: str
+        default: ''
+        description: Target hostname for placement constraint
+        needs: swarm_placement_mode=replicated
+        extra: Constrains service to run on specific node by hostname

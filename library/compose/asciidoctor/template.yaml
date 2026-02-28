@@ -1,0 +1,71 @@
+kind: compose
+metadata:
+  name: Asciidoctor
+  description: |
+    A **document processing toolchain** for converting AsciiDoc content into HTML5,
+    PDF, EPUB, DocBook, and other formats. Fast, accurate, and extensible.
+
+    ## Use Cases
+
+    - :info: Convert AsciiDoc documents to HTML, PDF, or EPUB.
+    - :info: Mount your AsciiDoc source files to `/documents` for processing.
+    - :info: Supports Asciidoctor extensions, diagrams, and mathematical formulas.
+    - :info: Use `asciidoctor-pdf` for PDF output or `asciidoctor-epub3` for EPUB.
+
+    ## Usage
+
+    After generating, run the conversion:
+    ```bash
+    docker compose run --rm asciidoctor
+    ```
+
+    ## Resources
+
+    - **Project**: https://asciidoctor.org/
+    - **Documentation**: https://docs.asciidoctor.org/
+    - **Docker Hub**: https://hub.docker.com/r/asciidoctor/docker-asciidoctor
+  version: 1.83.0
+  author: Christian Lempa
+  date: '2026-02-28'
+  tags:
+  - utility
+  - documentation
+  draft: true
+schema: '1.2'
+spec:
+  general:
+    vars:
+      service_name:
+        default: asciidoctor
+      container_name:
+        default: asciidoctor
+      restart_policy:
+        type: enum
+        options:
+        - 'no'
+        - unless-stopped
+        - always
+        - on-failure
+        default: 'no'
+        required: true
+  conversion:
+    title: Conversion Settings
+    vars:
+      documents_path:
+        type: str
+        description: Host path to AsciiDoc source files
+        default: ./documents
+      output_format:
+        type: enum
+        description: Output format
+        options:
+        - html
+        - pdf
+        - epub
+        - docbook
+        default: html
+      input_filename:
+        type: str
+        description: Main AsciiDoc file to process
+        default: index.adoc
+        extra: Name of the main .adoc file in the documents directory

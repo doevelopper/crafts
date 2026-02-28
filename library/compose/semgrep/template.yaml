@@ -1,0 +1,100 @@
+kind: compose
+metadata:
+  name: Semgrep
+  description: |
+    A **fast, open-source static analysis** (SAST) tool for finding bugs, detecting
+    vulnerabilities, and enforcing code standards. Supports 30+ languages including
+    Python, JavaScript, Go, Java, Ruby, and more.
+
+    ## Use Cases
+
+    - :info: Run as a one-shot scanner against a mounted source code directory.
+    - :info: Supports custom rules, community rulesets, and Semgrep Registry rules.
+    - :info: Output formats: text, JSON, SARIF, GitLab SAST, JUnit XML.
+    - :info: Mount your source code to `/src` and results will be written to `/results`.
+
+    ## Usage
+
+    After generating, run the scan:
+    ```bash
+    docker compose run --rm semgrep
+    ```
+
+    ## Resources
+
+    - **Project**: https://semgrep.dev/
+    - **Documentation**: https://semgrep.dev/docs/
+    - **GitHub**: https://github.com/semgrep/semgrep
+  version: 1.114.0
+  author: Christian Lempa
+  date: '2026-02-28'
+  tags:
+  - security
+  - sast
+  draft: true
+schema: '1.2'
+spec:
+  general:
+    vars:
+      service_name:
+        default: semgrep
+      container_name:
+        default: semgrep
+      restart_policy:
+        type: enum
+        options:
+        - 'no'
+        - unless-stopped
+        - always
+        - on-failure
+        default: 'no'
+        required: true
+  scan:
+    title: Scan Configuration
+    vars:
+      scan_config:
+        type: str
+        description: Semgrep ruleset configuration
+        default: auto
+        extra: "Use 'auto' for recommended rules, 'p/security-audit' for security,\
+          \ or path to custom rules"
+      scan_source_path:
+        type: str
+        description: Host path to source code to scan
+        default: ./src
+      scan_output_format:
+        type: enum
+        description: Output format for scan results
+        options:
+        - text
+        - json
+        - sarif
+        - gitlab-sast
+        - junit-xml
+        default: json
+      scan_output_path:
+        type: str
+        description: Host path for scan results
+        default: ./results
+      scan_severity:
+        type: enum
+        description: Minimum severity to report
+        options:
+        - INFO
+        - WARNING
+        - ERROR
+        default: INFO
+  network:
+    vars:
+      network_mode:
+        type: enum
+        options:
+        - bridge
+        - host
+        default: bridge
+      network_name:
+        default: semgrep_network
+      network_external:
+        type: bool
+        default: false
+        description: Whether the network is external

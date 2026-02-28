@@ -1,0 +1,147 @@
+services:
+  {{ service_name }}:
+    image: sonatype/nexus3:3.78.0
+    {% if not swarm_enabled -%}
+    container_name: {{ container_name }}
+    hostname: {{ container_hostname }}
+    {% endif -%}
+    environment:
+      - INSTALL4J_ADD_VM_PARAMS=-Xms1024m -Xmx2048m -XX:MaxDirectMemorySize=2048m
+    volumes:
+      - data:/nexus-data
+    {% if network_mode == 'bridge' -%}
+    networks:
+      {% if traefik_enabled -%}
+      - {{ traefik_network }}
+      {% endif -%}
+      - {{ network_name }}
+    {% else -%}
+    network_mode: {{ network_mode }}
+    {% endif -%}
+    {% if not traefik_enabled and network_mode == 'bridge' -%}
+    ports:
+      - "{{ ports_http }}:8081"
+      - "{{ ports_docker_registry }}:8082"
+    {% elif network_mode == 'bridge' -%}
+    ports:
+      - "{{ ports_docker_registry }}:8082"
+    {% endif -%}
+    {% if traefik_enabled -%}
+    labels:
+      - traefik.enable=true
+      {% if network_mode == 'bridge' -%}
+      - traefik.docker.network={{ traefik_network }}
+      {% endif -%}
+      - traefik.http.routers.{{ service_name }}.rule=Host(`{{ traefik_host }}.{{ traefik_domain }}`)
+      {% if traefik_tls_enabled -%}
+      - traefik.http.routers.{{ service_name }}.entrypoints={{ traefik_tls_entrypoint }}
+      - traefik.http.routers.{{ service_name }}.tls=true
+      - traefik.http.routers.{{ service_name }}.tls.certresolver={{ traefik_tls_certresolver }}
+      {% else -%}
+      - traefik.http.routers.{{ service_name }}.entrypoints={{ traefik_entrypoint }}
+      {% endif -%}
+      - traefik.http.services.{{ service_name }}-web.loadbalancer.server.port=8081
+      - traefik.http.routers.{{ service_name }}.service={{ service_name }}-web
+      {% if traefik_docker_host -%}
+      - traefik.http.routers.{{ service_name }}_docker.rule=Host(`{{ traefik_docker_host }}.{{ traefik_domain }}`)
+      {% if traefik_tls_enabled -%}
+      - traefik.http.routers.{{ service_name }}_docker.entrypoints={{ traefik_tls_entrypoint }}
+      - traefik.http.routers.{{ service_name }}_docker.tls=true
+      - traefik.http.routers.{{ service_name }}_docker.tls.certresolver={{ traefik_tls_certresolver }}
+      {% else -%}
+      - traefik.http.routers.{{ service_name }}_docker.entrypoints={{ traefik_entrypoint }}
+      {% endif -%}
+      - traefik.http.services.{{ service_name }}_docker.loadbalancer.server.port=8082
+      - traefik.http.routers.{{ service_name }}_docker.service={{ service_name }}_docker
+      {% endif -%}
+    {% endif -%}
+    {% if not swarm_enabled -%}
+    restart: {{ restart_policy }}
+    {% endif -%}
+    {% if swarm_enabled -%}
+    deploy:
+      mode: {{ swarm_placement_mode }}
+      {% if swarm_placement_mode == 'replicated' -%}
+      replicas: {{ swarm_replicas }}
+      {% endif -%}
+      {% if swarm_placement_host -%}
+      placement:
+        constraints:
+          - node.hostname == {{ swarm_placement_host }}
+      {% endif -%}
+      {% if traefik_enabled -%}
+      labels:
+        - traefik.enable=true
+        - traefik.docker.network={{ traefik_network }}
+        - traefik.http.routers.{{ service_name }}.rule=Host(`{{ traefik_host }}.{{ traefik_domain }}`)
+        {% if traefik_tls_enabled -%}
+        - traefik.http.routers.{{ service_name }}.entrypoints={{ traefik_tls_entrypoint }}
+        - traefik.http.routers.{{ service_name }}.tls=true
+        - traefik.http.routers.{{ service_name }}.tls.certresolver={{ traefik_tls_certresolver }}
+        {% else -%}
+        - traefik.http.routers.{{ service_name }}.entrypoints={{ traefik_entrypoint }}
+        {% endif -%}
+        - traefik.http.services.{{ service_name }}-web.loadbalancer.server.port=8081
+        - traefik.http.routers.{{ service_name }}.service={{ service_name }}-web
+        {% if traefik_docker_host -%}
+        - traefik.http.routers.{{ service_name }}_docker.rule=Host(`{{ traefik_docker_host }}.{{ traefik_domain }}`)
+        {% if traefik_tls_enabled -%}
+        - traefik.http.routers.{{ service_name }}_docker.entrypoints={{ traefik_tls_entrypoint }}
+        - traefik.http.routers.{{ service_name }}_docker.tls=true
+        - traefik.http.routers.{{ service_name }}_docker.tls.certresolver={{ traefik_tls_certresolver }}
+        {% else -%}
+        - traefik.http.routers.{{ service_name }}_docker.entrypoints={{ traefik_entrypoint }}
+        {% endif -%}
+        - traefik.http.services.{{ service_name }}_docker.loadbalancer.server.port=8082
+        - traefik.http.routers.{{ service_name }}_docker.service={{ service_name }}_docker
+        {% endif -%}
+      {% endif -%}
+    {% endif -%}
+
+volumes:
+{% if volume_mode == 'local' -%}
+  data:
+    driver: local
+{% elif volume_mode == 'mount' -%}
+  data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: {{ volume_mount_path }}
+{% elif volume_mode == 'nfs' -%}
+  data:
+    driver: local
+    driver_opts:
+      type: nfs
+      o: addr={{ volume_nfs_server }},nfsvers=4,{{ volume_nfs_options }}
+      device: ":{{ volume_nfs_path }}"
+{% endif -%}
+
+{% if network_mode == 'bridge' -%}
+networks:
+  {{ network_name }}:
+  {% if network_external -%}
+    external: true
+  {% else -%}
+    {% if swarm_enabled -%}
+    driver: overlay
+    attachable: true
+    {% else -%}
+    driver: bridge
+    {% endif -%}
+  {% endif -%}
+  {% if traefik_enabled -%}
+  {{ traefik_network }}:
+  {% if traefik_network_external -%}
+    external: true
+  {% else -%}
+    {% if swarm_enabled -%}
+    driver: overlay
+    attachable: true
+    {% else -%}
+    driver: bridge
+    {% endif -%}
+  {% endif -%}
+  {% endif -%}
+{% endif -%}

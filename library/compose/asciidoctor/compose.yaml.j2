@@ -1,0 +1,16 @@
+services:
+  {{ service_name }}:
+    image: asciidoctor/docker-asciidoctor:1.83.0
+    container_name: {{ container_name }}
+    {% if output_format == 'pdf' -%}
+    command: asciidoctor-pdf -D /documents/output /documents/{{ input_filename }}
+    {% elif output_format == 'epub' -%}
+    command: asciidoctor-epub3 -D /documents/output /documents/{{ input_filename }}
+    {% elif output_format == 'docbook' -%}
+    command: asciidoctor -b docbook -D /documents/output /documents/{{ input_filename }}
+    {% else -%}
+    command: asciidoctor -D /documents/output /documents/{{ input_filename }}
+    {% endif -%}
+    volumes:
+      - {{ documents_path }}:/documents
+    restart: {{ restart_policy }}

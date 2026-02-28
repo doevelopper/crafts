@@ -1,0 +1,40 @@
+services:
+  {{ service_name }}:
+    image: semgrep/semgrep:1.114.0
+    container_name: {{ container_name }}
+    command: >
+      semgrep scan
+      --config {{ scan_config }}
+      --severity {{ scan_severity }}
+      {% if scan_output_format == 'json' -%}
+      --json --output /results/semgrep-results.json
+      {% elif scan_output_format == 'sarif' -%}
+      --sarif --output /results/semgrep-results.sarif
+      {% elif scan_output_format == 'gitlab-sast' -%}
+      --gitlab-sast --output /results/gl-sast-report.json
+      {% elif scan_output_format == 'junit-xml' -%}
+      --junit-xml --output /results/semgrep-results.xml
+      {% else -%}
+      --output /results/semgrep-results.txt
+      {% endif -%}
+      /src
+    volumes:
+      - {{ scan_source_path }}:/src:ro
+      - {{ scan_output_path }}:/results
+    {% if network_mode == 'bridge' -%}
+    networks:
+      - {{ network_name }}
+    {% else -%}
+    network_mode: {{ network_mode }}
+    {% endif -%}
+    restart: {{ restart_policy }}
+
+{% if network_mode == 'bridge' -%}
+networks:
+  {{ network_name }}:
+  {% if network_external -%}
+    external: true
+  {% else -%}
+    driver: bridge
+  {% endif -%}
+{% endif -%}

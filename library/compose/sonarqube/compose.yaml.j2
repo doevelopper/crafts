@@ -1,0 +1,201 @@
+services:
+{% if database_enabled and not database_external -%}
+  {{ service_name }}-db:
+    image: postgres:17.8
+    {% if not swarm_enabled -%}
+    container_name: {{ container_name }}-db
+    {% endif -%}
+    environment:
+      - POSTGRES_DB={{ database_name }}
+      - POSTGRES_USER={{ database_user }}
+      - POSTGRES_PASSWORD=${SONARQUBE_DB_PASSWORD}
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    {% if network_mode == 'bridge' -%}
+    networks:
+      - {{ network_name }}
+    {% endif -%}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U {{ database_user }} -d {{ database_name }}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    {% if not swarm_enabled -%}
+    restart: {{ restart_policy }}
+    {% endif -%}
+    {% if swarm_enabled -%}
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+    {% endif -%}
+
+{% endif -%}
+  {{ service_name }}:
+    image: sonarqube:25.4.0-community
+    {% if not swarm_enabled -%}
+    container_name: {{ container_name }}
+    hostname: {{ container_hostname }}
+    {% endif -%}
+    environment:
+      {% if database_enabled -%}
+      - SONAR_JDBC_URL=jdbc:postgresql://{{ database_host }}:{{ database_port }}/{{ database_name }}
+      - SONAR_JDBC_USERNAME={{ database_user }}
+      - SONAR_JDBC_PASSWORD=${SONARQUBE_DB_PASSWORD}
+      {% endif -%}
+      - SONAR_ES_BOOTSTRAP_CHECKS_DISABLE=false
+    ulimits:
+      nofile:
+        soft: 131072
+        hard: 131072
+    volumes:
+      - data:/opt/sonarqube/data
+      - extensions:/opt/sonarqube/extensions
+      - logs:/opt/sonarqube/logs
+    {% if network_mode == 'bridge' -%}
+    networks:
+      {% if traefik_enabled -%}
+      - {{ traefik_network }}
+      {% endif -%}
+      - {{ network_name }}
+    {% else -%}
+    network_mode: {{ network_mode }}
+    {% endif -%}
+    {% if database_enabled and not database_external -%}
+    depends_on:
+      {{ service_name }}-db:
+        condition: service_healthy
+    {% endif -%}
+    {% if not traefik_enabled and network_mode == 'bridge' -%}
+    ports:
+      - "{{ ports_http }}:9000"
+    {% endif -%}
+    {% if traefik_enabled -%}
+    labels:
+      - traefik.enable=true
+      {% if network_mode == 'bridge' -%}
+      - traefik.docker.network={{ traefik_network }}
+      {% endif -%}
+      - traefik.http.routers.{{ service_name }}.rule=Host(`{{ traefik_host }}.{{ traefik_domain }}`)
+      {% if traefik_tls_enabled -%}
+      - traefik.http.routers.{{ service_name }}.entrypoints={{ traefik_tls_entrypoint }}
+      - traefik.http.routers.{{ service_name }}.tls=true
+      - traefik.http.routers.{{ service_name }}.tls.certresolver={{ traefik_tls_certresolver }}
+      {% else -%}
+      - traefik.http.routers.{{ service_name }}.entrypoints={{ traefik_entrypoint }}
+      {% endif -%}
+      - traefik.http.services.{{ service_name }}-web.loadbalancer.server.port=9000
+      - traefik.http.routers.{{ service_name }}.service={{ service_name }}-web
+    {% endif -%}
+    {% if not swarm_enabled -%}
+    restart: {{ restart_policy }}
+    {% endif -%}
+    {% if swarm_enabled -%}
+    deploy:
+      mode: {{ swarm_placement_mode }}
+      {% if swarm_placement_mode == 'replicated' -%}
+      replicas: {{ swarm_replicas }}
+      {% endif -%}
+      {% if swarm_placement_host -%}
+      placement:
+        constraints:
+          - node.hostname == {{ swarm_placement_host }}
+      {% endif -%}
+      {% if traefik_enabled -%}
+      labels:
+        - traefik.enable=true
+        - traefik.docker.network={{ traefik_network }}
+        - traefik.http.routers.{{ service_name }}.rule=Host(`{{ traefik_host }}.{{ traefik_domain }}`)
+        {% if traefik_tls_enabled -%}
+        - traefik.http.routers.{{ service_name }}.entrypoints={{ traefik_tls_entrypoint }}
+        - traefik.http.routers.{{ service_name }}.tls=true
+        - traefik.http.routers.{{ service_name }}.tls.certresolver={{ traefik_tls_certresolver }}
+        {% else -%}
+        - traefik.http.routers.{{ service_name }}.entrypoints={{ traefik_entrypoint }}
+        {% endif -%}
+        - traefik.http.services.{{ service_name }}-web.loadbalancer.server.port=9000
+        - traefik.http.routers.{{ service_name }}.service={{ service_name }}-web
+      {% endif -%}
+    {% endif -%}
+
+volumes:
+{% if volume_mode == 'local' -%}
+  data:
+    driver: local
+  extensions:
+    driver: local
+  logs:
+    driver: local
+{% elif volume_mode == 'mount' -%}
+  data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: {{ volume_mount_path }}/data
+  extensions:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: {{ volume_mount_path }}/extensions
+  logs:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: {{ volume_mount_path }}/logs
+{% elif volume_mode == 'nfs' -%}
+  data:
+    driver: local
+    driver_opts:
+      type: nfs
+      o: addr={{ volume_nfs_server }},nfsvers=4,{{ volume_nfs_options }}
+      device: ":{{ volume_nfs_path }}/data"
+  extensions:
+    driver: local
+    driver_opts:
+      type: nfs
+      o: addr={{ volume_nfs_server }},nfsvers=4,{{ volume_nfs_options }}
+      device: ":{{ volume_nfs_path }}/extensions"
+  logs:
+    driver: local
+    driver_opts:
+      type: nfs
+      o: addr={{ volume_nfs_server }},nfsvers=4,{{ volume_nfs_options }}
+      device: ":{{ volume_nfs_path }}/logs"
+{% endif -%}
+{% if database_enabled and not database_external -%}
+  db_data:
+    driver: local
+{% endif -%}
+
+{% if network_mode == 'bridge' -%}
+networks:
+  {{ network_name }}:
+  {% if network_external -%}
+    external: true
+  {% else -%}
+    {% if swarm_enabled -%}
+    driver: overlay
+    attachable: true
+    {% else -%}
+    driver: bridge
+    {% endif -%}
+  {% endif -%}
+  {% if traefik_enabled -%}
+  {{ traefik_network }}:
+  {% if traefik_network_external -%}
+    external: true
+  {% else -%}
+    {% if swarm_enabled -%}
+    driver: overlay
+    attachable: true
+    {% else -%}
+    driver: bridge
+    {% endif -%}
+  {% endif -%}
+  {% endif -%}
+{% endif -%}

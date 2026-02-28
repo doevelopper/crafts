@@ -1,0 +1,184 @@
+kind: compose
+metadata:
+  name: YouTrack
+  description: |
+    A **project management and issue tracking** tool by JetBrains. Provides agile boards,
+    time tracking, knowledge base, and powerful search with a smart query language.
+
+    ## Prerequisites
+
+    - :info: YouTrack uses an embedded database by default. Data is stored in a Docker volume.
+    - :info: First startup may take a few minutes for initialization.
+    - :info: A configuration wizard will guide initial setup on first access.
+
+    ## Resources
+
+    - **Project**: https://www.jetbrains.com/youtrack/
+    - **Documentation**: https://www.jetbrains.com/help/youtrack/
+    - **Docker Hub**: https://hub.docker.com/r/jetbrains/youtrack
+  version: 2025.1
+  author: Christian Lempa
+  date: '2026-02-28'
+  tags:
+  - traefik
+  - swarm
+  draft: true
+schema: '1.2'
+spec:
+  general:
+    vars:
+      service_name:
+        default: youtrack
+      container_name:
+        default: youtrack
+      container_hostname:
+        default: youtrack
+      restart_policy:
+        type: enum
+        options:
+        - unless-stopped
+        - always
+        - on-failure
+        - 'no'
+        default: unless-stopped
+        required: true
+      base_url:
+        type: url
+        description: YouTrack base URL for external access
+        default: http://localhost:8080
+        extra: Set to your public URL (e.g., https://youtrack.example.com)
+  ports:
+    vars:
+      ports_http:
+        description: External HTTP port
+        type: int
+        default: 8080
+        needs:
+        - traefik_enabled=false
+        - network_mode=bridge
+  traefik:
+    toggle: traefik_enabled
+    title: Traefik
+    description: Configure Traefik reverse proxy integration
+    vars:
+      traefik_enabled:
+        type: bool
+        default: false
+        description: Enable Traefik integration
+        needs: network_mode=bridge
+      traefik_entrypoint:
+        type: str
+        description: The Traefik entrypoint
+        default: web
+        required: true
+      traefik_host:
+        default: youtrack
+      traefik_network:
+        type: str
+        description: Traefik network name
+        default: traefik
+        required: true
+        needs: traefik_enabled
+      traefik_network_external:
+        type: bool
+        description: Use external Traefik network
+        default: true
+        needs: traefik_enabled
+      traefik_domain:
+        type: str
+        default: home.arpa
+        required: true
+  traefik_tls:
+    toggle: traefik_tls_enabled
+    title: Traefik TLS
+    description: Configure Traefik TLS/SSL certificates
+    needs: traefik
+    vars:
+      traefik_tls_enabled:
+        type: bool
+        default: false
+        description: Enable Traefik TLS
+      traefik_tls_entrypoint:
+        type: str
+        description: The Traefik TLS entrypoint
+        default: websecure
+        required: true
+      traefik_tls_certresolver:
+        type: str
+        default: cloudflare
+        required: true
+  volume:
+    title: Volume Storage
+    vars:
+      volume_mode:
+        type: enum
+        description: Volume storage mode
+        options:
+        - local
+        - mount
+        - nfs
+        default: local
+      volume_mount_path:
+        type: str
+        description: Host path for bind mount
+        default: /srv/youtrack
+        needs: volume_mode=mount
+      volume_nfs_server:
+        type: str
+        description: NFS server address
+        default: ''
+        needs: volume_mode=nfs
+      volume_nfs_path:
+        type: str
+        description: NFS export path
+        default: /mnt/youtrack
+        needs: volume_mode=nfs
+      volume_nfs_options:
+        type: str
+        description: NFS mount options
+        default: rw,nolock,soft
+        needs: volume_mode=nfs
+  network:
+    vars:
+      network_mode:
+        type: enum
+        options:
+        - bridge
+        - host
+        - macvlan
+        default: bridge
+      network_name:
+        default: youtrack_network
+      network_external:
+        type: bool
+        default: false
+        description: Whether the network is external
+  swarm:
+    toggle: swarm_enabled
+    title: Docker Swarm
+    description: Configure Docker Swarm deployment
+    vars:
+      swarm_enabled:
+        type: bool
+        default: false
+        description: Enable Docker Swarm mode
+        needs: network_mode=bridge
+      swarm_placement_mode:
+        type: enum
+        options:
+        - replicated
+        - global
+        default: replicated
+        required: true
+      swarm_replicas:
+        type: int
+        default: 1
+        description: Number of replicas
+        needs: swarm_placement_mode=replicated
+        required: true
+      swarm_placement_host:
+        type: str
+        default: ''
+        description: Target hostname for placement constraint
+        needs: swarm_placement_mode=replicated
+        extra: Constrains service to run on specific node by hostname

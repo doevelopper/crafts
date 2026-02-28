@@ -1,0 +1,37 @@
+services:
+  {{ service_name }}:
+    {% if qodana_variant == 'python' -%}
+    image: jetbrains/qodana-python:2025.1
+    {% elif qodana_variant == 'jvm' -%}
+    image: jetbrains/qodana-jvm:2025.1
+    {% elif qodana_variant == 'clang' -%}
+    image: jetbrains/qodana-clang:2025.1
+    {% elif qodana_variant == 'cpp' -%}
+    image: jetbrains/qodana-cdnet:2025.1
+    {% endif -%}
+    container_name: {{ container_name }}
+    {% if cloud_enabled -%}
+    environment:
+      - QODANA_TOKEN=${QODANA_TOKEN}
+    {% endif -%}
+    volumes:
+      - {{ scan_source_path }}:/data/project:ro
+      - {{ scan_results_path }}:/data/results
+      - {{ scan_cache_path }}:/data/cache
+    {% if network_mode == 'bridge' -%}
+    networks:
+      - {{ network_name }}
+    {% else -%}
+    network_mode: {{ network_mode }}
+    {% endif -%}
+    restart: {{ restart_policy }}
+
+{% if network_mode == 'bridge' -%}
+networks:
+  {{ network_name }}:
+  {% if network_external -%}
+    external: true
+  {% else -%}
+    driver: bridge
+  {% endif -%}
+{% endif -%}

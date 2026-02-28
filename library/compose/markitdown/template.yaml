@@ -1,0 +1,65 @@
+kind: compose
+metadata:
+  name: MarkItDown
+  description: |
+    A **document-to-Markdown converter** by Microsoft. Converts PDF, Word, Excel,
+    PowerPoint, images, audio, HTML, and other formats into clean Markdown text.
+
+    ## Use Cases
+
+    - :info: Convert documents for use in LLM pipelines, RAG systems, or documentation.
+    - :info: Supports: PDF, DOCX, XLSX, PPTX, HTML, images (with EXIF/OCR), audio (with speech-to-text).
+    - :info: Mount input files to `/input` and retrieve converted output from `/output`.
+
+    ## Usage
+
+    After generating, run the conversion:
+    ```bash
+    docker compose run --rm markitdown
+    ```
+
+    ## Resources
+
+    - **Project**: https://github.com/microsoft/markitdown
+    - **Documentation**: https://github.com/microsoft/markitdown#readme
+    - **PyPI**: https://pypi.org/project/markitdown/
+  version: 0.1.1
+  author: Christian Lempa
+  date: '2026-02-28'
+  tags:
+  - utility
+  - converter
+  draft: true
+schema: '1.2'
+spec:
+  general:
+    vars:
+      service_name:
+        default: markitdown
+      container_name:
+        default: markitdown
+      restart_policy:
+        type: enum
+        options:
+        - 'no'
+        - unless-stopped
+        - always
+        - on-failure
+        default: 'no'
+        required: true
+  conversion:
+    title: Conversion Settings
+    vars:
+      input_path:
+        type: str
+        description: Host path to input documents
+        default: ./input
+      output_path:
+        type: str
+        description: Host path for converted Markdown output
+        default: ./output
+      input_filename:
+        type: str
+        description: Input filename to convert (relative to input path)
+        default: document.pdf
+        extra: Name of the file inside the input directory to convert

@@ -1,0 +1,11 @@
+services:
+  {{ service_name }}:
+    image: python:3.13-slim
+    container_name: {{ container_name }}
+    entrypoint: >
+      sh -c "pip install --quiet markitdown &&
+      markitdown /input/{{ input_filename }} > /output/{{ input_filename }}.md"
+    volumes:
+      - {{ input_path }}:/input:ro
+      - {{ output_path }}:/output
+    restart: {{ restart_policy }}

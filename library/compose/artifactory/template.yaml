@@ -1,0 +1,227 @@
+kind: compose
+metadata:
+  name: JFrog Artifactory
+  description: |
+    A **universal artifact repository manager** by JFrog. Supports Docker, Maven, npm,
+    PyPI, Helm, Gradle, Go, and 30+ package types in a single platform.
+
+    ## Prerequisites
+
+    - :info: This template deploys the **OSS** (Open Source) edition. For Pro/Enterprise
+      features, update the image manually.
+    - :info: Artifactory requires at least 4GB of RAM. Set JVM heap via `EXTRA_JAVA_OPTIONS`.
+    - :info: Default credentials are `admin` / `password`. Change immediately after first login.
+    - :info: An external PostgreSQL database is recommended for production use.
+
+    ## Resources
+
+    - **Project**: https://jfrog.com/artifactory/
+    - **Documentation**: https://jfrog.com/help/r/jfrog-artifactory-documentation
+    - **Docker Hub**: https://hub.docker.com/r/releases-docker.jfrog.io/jfrog/artifactory-oss
+  version: 7.98.14
+  author: Christian Lempa
+  date: '2026-02-28'
+  tags:
+  - traefik
+  - database
+  - swarm
+  draft: true
+schema: '1.2'
+spec:
+  general:
+    vars:
+      service_name:
+        default: artifactory
+      container_name:
+        default: artifactory
+      container_hostname:
+        default: artifactory
+      restart_policy:
+        type: enum
+        options:
+        - unless-stopped
+        - always
+        - on-failure
+        - 'no'
+        default: unless-stopped
+        required: true
+  ports:
+    vars:
+      ports_http:
+        description: Artifactory web UI port
+        type: int
+        default: 8082
+        needs:
+        - traefik_enabled=false
+        - network_mode=bridge
+      ports_router:
+        description: Artifactory router port
+        type: int
+        default: 8081
+        needs: network_mode=bridge
+  database:
+    title: Database
+    toggle: database_enabled
+    description: External PostgreSQL database configuration
+    vars:
+      database_enabled:
+        type: bool
+        description: Use external PostgreSQL database
+        default: false
+        extra: Recommended for production. Uses embedded Derby DB by default.
+      database_external:
+        type: bool
+        description: Use external database (skip embedded container)
+        default: false
+        needs: database_enabled
+      database_host:
+        type: str
+        description: PostgreSQL host
+        default: artifactory-db
+        needs: database_enabled
+      database_port:
+        type: int
+        description: PostgreSQL port
+        default: 5432
+        needs: database_enabled
+      database_name:
+        type: str
+        description: Database name
+        default: artifactory
+        needs: database_enabled
+      database_user:
+        type: str
+        description: Database username
+        default: artifactory
+        needs: database_enabled
+      database_password:
+        type: str
+        description: Database password
+        sensitive: true
+        needs: database_enabled
+  traefik:
+    toggle: traefik_enabled
+    title: Traefik
+    description: Configure Traefik reverse proxy integration
+    vars:
+      traefik_enabled:
+        type: bool
+        default: false
+        description: Enable Traefik integration
+        needs: network_mode=bridge
+      traefik_entrypoint:
+        type: str
+        description: The Traefik entrypoint
+        default: web
+        required: true
+      traefik_host:
+        default: artifactory
+      traefik_network:
+        type: str
+        description: Traefik network name
+        default: traefik
+        required: true
+        needs: traefik_enabled
+      traefik_network_external:
+        type: bool
+        description: Use external Traefik network
+        default: true
+        needs: traefik_enabled
+      traefik_domain:
+        type: str
+        default: home.arpa
+        required: true
+  traefik_tls:
+    toggle: traefik_tls_enabled
+    title: Traefik TLS
+    description: Configure Traefik TLS/SSL certificates
+    needs: traefik
+    vars:
+      traefik_tls_enabled:
+        type: bool
+        default: false
+        description: Enable Traefik TLS
+      traefik_tls_entrypoint:
+        type: str
+        description: The Traefik TLS entrypoint
+        default: websecure
+        required: true
+      traefik_tls_certresolver:
+        type: str
+        default: cloudflare
+        required: true
+  volume:
+    title: Volume Storage
+    vars:
+      volume_mode:
+        type: enum
+        description: Volume storage mode
+        options:
+        - local
+        - mount
+        - nfs
+        default: local
+      volume_mount_path:
+        type: str
+        description: Host path for bind mount
+        default: /srv/artifactory
+        needs: volume_mode=mount
+      volume_nfs_server:
+        type: str
+        description: NFS server address
+        default: ''
+        needs: volume_mode=nfs
+      volume_nfs_path:
+        type: str
+        description: NFS export path
+        default: /mnt/artifactory
+        needs: volume_mode=nfs
+      volume_nfs_options:
+        type: str
+        description: NFS mount options
+        default: rw,nolock,soft
+        needs: volume_mode=nfs
+  network:
+    vars:
+      network_mode:
+        type: enum
+        options:
+        - bridge
+        - host
+        - macvlan
+        default: bridge
+      network_name:
+        default: artifactory_network
+      network_external:
+        type: bool
+        default: false
+        description: Whether the network is external
+  swarm:
+    toggle: swarm_enabled
+    title: Docker Swarm
+    description: Configure Docker Swarm deployment
+    vars:
+      swarm_enabled:
+        type: bool
+        default: false
+        description: Enable Docker Swarm mode
+        needs: network_mode=bridge
+      swarm_placement_mode:
+        type: enum
+        options:
+        - replicated
+        - global
+        default: replicated
+        required: true
+      swarm_replicas:
+        type: int
+        default: 1
+        description: Number of replicas
+        needs: swarm_placement_mode=replicated
+        required: true
+      swarm_placement_host:
+        type: str
+        default: ''
+        description: Target hostname for placement constraint
+        needs: swarm_placement_mode=replicated
+        extra: Constrains service to run on specific node by hostname
